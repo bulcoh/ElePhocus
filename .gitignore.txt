@@ -1,0 +1,11 @@
+# PyInstaller outputs (용량이 큰 빌드 파일)
+/dist/
+/build/
+/archive/
+
+# 임시 파일 및 캐시
+__pycache__/
+*.pyc
+
+# PyInstaller Spec 파일 (자동 생성 가능하므로 제외)
+*.spec
