@@ -1,0 +1,3 @@
+([('ElePhocus',
+   '/Users/hongsangkwon/Desktop/worktimer/dist/ElePhocus',
+   'EXECUTABLE')],)
