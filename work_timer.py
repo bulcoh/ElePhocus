@@ -34,7 +34,7 @@ UPDATE_CHECK_INTERVAL = 12 * 3600   # 켜둔 채로 있어도 12시간마다 다
 COLON_LIFT = 4
 
 # 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
-COMPACT_HEIGHT = 205 if IS_WIN else 182
+COMPACT_HEIGHT = 205 if IS_WIN else 178
 SETTINGS_PANEL_HEIGHT = 340
 
 if IS_MAC:
@@ -719,6 +719,14 @@ class WorkTimer:
 def main():
     root = ctk.CTk()
     app = WorkTimer(root)
+    if "--fontinfo" in sys.argv:      # ElePhocus.exe --fontinfo : 실제로 쓰는 폰트 확인용
+        def show_info():
+            found = [f for f in tkfont.families(root) if "retend" in f.lower()]
+            messagebox.showinfo(
+                "Font info",
+                f"UI font: {app.font}\nTimer font: {app.timer_family}\n\n"
+                "Pretendard families found:\n" + ("\n".join(found) if found else "(none)"))
+        root.after(500, show_info)
     root.mainloop()
 
 
