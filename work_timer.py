@@ -1,5 +1,5 @@
 """
-ElePhocus - Work Time Tracker  v1.1
+ElePhocus - Work Time Tracker  v1.3
 Copyright (c) 2025 붉은코끼리 (Red Elephant)
 Licensed under MIT License with commercial restriction
 
@@ -14,13 +14,28 @@ import json
 import os
 import sys
 import platform
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
+import re
+import webbrowser
+import urllib.request
+import ssl
 
 IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
-VERSION = "1.1"
+VERSION = "1.3"
+GITHUB_REPO = "bulcoh/ElePhocus"
+LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
+UPDATE_CHECK_INTERVAL = 12 * 3600   # 켜둔 채로 있어도 12시간마다 다시 확인
+
+# 시계의 ':' 를 위로 끌어올리는 양(px). 너무 높으면 줄이고, 아직 낮으면 키우세요.
+COLON_LIFT = 4
+
+# 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
+COMPACT_HEIGHT = 205 if IS_WIN else 182
+SETTINGS_PANEL_HEIGHT = 340
 
 if IS_MAC:
     from AppKit import NSWorkspace, NSApplication
@@ -41,11 +56,50 @@ def resource_path(name):
 # 윈도우: 번들 폰트를 (설치 없이) 이 프로세스에서만 사용하도록 등록. Tk 창 만들기 전에 해야 함
 if IS_WIN:
     try:
-        _font_path = resource_path("NotoSansKR-Light.ttf")
-        if os.path.exists(_font_path):
-            ctypes.windll.gdi32.AddFontResourceExW(_font_path, 0x10, 0)  # FR_PRIVATE
+        _font_files = []
+        _fdir = resource_path("fonts")          # fonts/ 폴더 안의 ttf/otf 전부 등록
+        if os.path.isdir(_fdir):
+            _font_files += [os.path.join(_fdir, f) for f in sorted(os.listdir(_fdir))
+                            if f.lower().endswith((".ttf", ".otf", ".ttc"))]
+        for _fp in _font_files:
+            ctypes.windll.gdi32.AddFontResourceExW(_fp, 0x10, 0)  # FR_PRIVATE
     except Exception:
         pass
+
+def detect_lang():
+    """OS에 설정된 언어 코드(ko, en, ja, zh ...)"""
+    try:
+        if IS_MAC:
+            from Foundation import NSLocale
+            return str(NSLocale.preferredLanguages()[0]).split("-")[0].lower()
+        if IS_WIN:
+            buf = ctypes.create_unicode_buffer(85)
+            ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85)
+            return buf.value.split("-")[0].lower()
+    except Exception:
+        pass
+    try:
+        import locale
+        return (locale.getdefaultlocale()[0] or "en").split("_")[0].lower()
+    except Exception:
+        return "en"
+
+
+_EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def format_date(d, lang):
+    if lang == "ko":
+        return f"{d.month}월 {d.day}일"
+    if lang in ("ja", "zh"):
+        return f"{d.month}月{d.day}日"
+    return f"{_EN_MONTHS[d.month - 1]} {d.day}"
+
+
+def parse_version(s):
+    return tuple(int(x) for x in re.findall(r"\d+", s or ""))
+
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -55,11 +109,13 @@ class WorkTimer:
     def __init__(self, root):
         self.root = root
         self.root.title("ElePhocus")
+        self.set_window_icon()
 
+        self.lang = detect_lang()
         self.font = self.pick_font()
 
-        self.compact_height = 170
-        self.expanded_height = 510 if IS_WIN else 510
+        self.compact_height = COMPACT_HEIGHT
+        self.expanded_height = COMPACT_HEIGHT + SETTINGS_PANEL_HEIGHT
         self.root.geometry(f"300x{self.compact_height}")
         self.root.resizable(False, False)
 
@@ -83,6 +139,8 @@ class WorkTimer:
         self.last_active_app = ""
         self.idle_threshold = 30
         self.is_settings_expanded = False
+        self._update_info = None
+        self._update_checking = False
 
         self.color_themes = [
             {'name': 'Strawberry', 'primary': '#FF6B6B', 'bg': '#2B1F1F', 'card': '#3D2B2B', 'text': '#FFFFFF'},
@@ -113,19 +171,43 @@ class WorkTimer:
         self.update_timer_display()
         self.start_monitoring()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.schedule_midnight()
+        self.root.after(3000, self.start_update_check)
+
+    # ---------- 창 아이콘 (윈도우 타이틀바/작업표시줄) ----------
+    def set_window_icon(self):
+        if not IS_WIN:
+            return
+        ico = resource_path("app_icon.ico")
+        if not os.path.exists(ico):
+            return
+
+        def apply():
+            try:
+                self.root.iconbitmap(ico)
+            except Exception:
+                pass
+        apply()
+        # customtkinter가 약 200ms 뒤에 자기 기본 아이콘으로 덮어쓰는 경우를 대비해 한 번 더
+        self.root.after(300, apply)
 
     # ---------- 폰트 ----------
     def pick_font(self):
+        self.timer_family = "Segoe UI"
         if IS_WIN:
             try:
-                fams = tkfont.families(self.root)
-                for cand in ("Noto Sans KR Light", "Noto Sans KR"):
-                    if cand in fams:
-                        return cand
+                # 'Pretendard', 'Pretendard Medium' 등 어떤 이름으로 등록됐든 찾아서 사용
+                pret = [f for f in tkfont.families(self.root) if f.lower().startswith("pretendard")]
+                if pret:
+                    pret.sort(key=lambda f: (f != "Pretendard", len(f)))
+                    self.timer_family = pret[0]
+                    return pret[0]
             except Exception:
                 pass
-            return "Malgun Gothic"
-        return "Helvetica"
+            return "Segoe UI"      # Pretendard 로딩 실패 시에만 (한글은 윈도우가 맑은 고딕으로 대신 채움)
+        # 맥: 1.0 때 customtkinter 기본값이던 시스템 폰트(SF) 사용. 한글은 자동으로 Apple SD Gothic Neo
+        self.timer_family = "SF Pro Display"
+        return "SF Pro Display"
 
     # ---------- 메뉴바 (mac) ----------
     def setup_menubar(self):
@@ -163,8 +245,9 @@ class WorkTimer:
         header_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
         header_frame.pack(fill='x', padx=10, pady=(5, 0))
 
-        date_str = datetime.now().strftime("%m월 %d일")
-        self.header_label = ctk.CTkLabel(header_frame, text=f"  {date_str}",
+        self._shown_date = datetime.now().date()
+        self.header_label = ctk.CTkLabel(header_frame,
+                                         text=f"  {format_date(self._shown_date, self.lang)}",
                                          font=(F, 11, "bold"))
         self.header_label.pack(side="left")
 
@@ -176,9 +259,31 @@ class WorkTimer:
                                           hover_color=("gray70", "gray30"))
         self.settings_btn.pack(side="right",pady=(3, 0) if IS_WIN else 0)
 
-        self.timer_label = ctk.CTkLabel(self.top_frame, text="00:00:00",
-                                        font=("Segoe UI", 42, "bold") if IS_WIN else (F, 42, "bold"))
-        self.timer_label.pack()
+        # 새 버전 알림 버튼 (새 버전이 있을 때만 show_update_button()에서 표시)
+        self.update_btn = ctk.CTkButton(header_frame, text="", width=60, height=24,
+                                        font=(F, 11, "bold"),
+                                        fg_color="transparent",
+                                        hover_color=("gray70", "gray30"),
+                                        command=self.open_update_page)
+
+        # 시계: 시/분/초와 ':'를 따로 그려서 ':'를 숫자 높이 중앙으로 맞춘다
+        TS = 42
+        timer_font = ctk.CTkFont(family=self.timer_family, size=TS, weight="bold")
+        probe = tkfont.Font(root=self.root, family=self.timer_family, size=-TS, weight="bold")
+        digit_w = max(probe.measure(d) for d in "0123456789")
+        self.seg_w = digit_w * 2 + 4
+        self.timer_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
+        self.timer_frame.pack()
+        self.timer_parts = []
+        for i in range(3):
+            if i:
+                colon = ctk.CTkLabel(self.timer_frame, text=":", font=timer_font, width=0)
+                colon.pack(side="left", pady=(0, COLON_LIFT * 2))
+                self.timer_parts.append(colon)
+            seg = ctk.CTkLabel(self.timer_frame, text="00", font=timer_font, width=self.seg_w)
+            seg.pack(side="left")
+            self.timer_parts.append(seg)
+        self.timer_segments = [self.timer_parts[0], self.timer_parts[2], self.timer_parts[4]]
 
         self.status_label = ctk.CTkLabel(self.top_frame, text="⏸ 대기 중",
                                          font=(F, 11))
@@ -310,7 +415,8 @@ class WorkTimer:
 
         self.root.configure(fg_color=theme['bg'])
         self.top_frame.configure(fg_color=theme['card'])
-        self.timer_label.configure(text_color=theme['primary'])
+        for w in self.timer_parts:
+            w.configure(text_color=theme['primary'])
         self.header_label.configure(text_color=theme['primary'])
         self.current_app_label.configure(text_color=theme['primary'])
 
@@ -321,6 +427,7 @@ class WorkTimer:
                                  hover_color=theme['primary'],
                                  text_color=text_color)
         self.settings_btn.configure(text_color=theme['primary'])
+        self.update_btn.configure(text_color=theme['primary'])
 
         for name in ('remove_btn', 'clear_btn', 'refresh_btn', 'add_combo_btn',
                      'add_manual_btn', 'reset_btn'):
@@ -352,7 +459,69 @@ class WorkTimer:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
     def update_timer_display(self):
-        self.timer_label.configure(text=self.format_time(self.elapsed_seconds))
+        t = self.elapsed_seconds
+        h, m, s = t // 3600, (t % 3600) // 60, t % 60
+        hs = f"{h:02d}"
+        self.timer_segments[0].configure(text=hs, width=self.seg_w if len(hs) <= 2 else self.seg_w * 3 // 2)
+        self.timer_segments[1].configure(text=f"{m:02d}")
+        self.timer_segments[2].configure(text=f"{s:02d}")
+
+    # ---------- 날짜 갱신: 다음 자정까지 대기했다가 딱 한 번만 깨어남 ----------
+    def schedule_midnight(self):
+        now = datetime.now()
+        nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=1, microsecond=0)
+        ms = max(1000, int((nxt - now).total_seconds() * 1000))
+        self.root.after(ms, self.on_midnight)
+
+    def on_midnight(self):
+        today = datetime.now().date()
+        self._shown_date = today
+        self.header_label.configure(text=f"  {format_date(today, self.lang)}")
+        self.schedule_midnight()
+
+    # ---------- 업데이트 확인: 시작 3초 뒤 1회 + 12시간마다 ----------
+    def start_update_check(self):
+        if not self._update_checking:
+            self._update_checking = True
+            threading.Thread(target=self.check_for_update, daemon=True).start()
+        self.root.after(UPDATE_CHECK_INTERVAL * 1000, self.start_update_check)
+
+    def show_update_button(self):
+        if self._update_info and not self.update_btn.winfo_ismapped():
+            self.update_btn.configure(text=f"↑ {self._update_info[0]}")
+            self.update_btn.pack(side="right", padx=(0, 2))
+
+    def check_for_update(self):
+        try:
+            try:
+                import certifi
+                ctx = ssl.create_default_context(cafile=certifi.where())
+            except Exception:
+                ctx = ssl.create_default_context()
+            req = urllib.request.Request(LATEST_API, headers={
+                "User-Agent": f"ElePhocus/{VERSION}",
+                "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=8, context=ctx) as r:
+                data = json.load(r)
+            tag = data.get("tag_name", "")
+            if parse_version(tag) > parse_version(VERSION):
+                url = data.get("html_url") or RELEASES_URL
+                if not url.startswith("https://github.com/"):
+                    url = RELEASES_URL
+                self._update_info = (tag, url)
+                self.root.after(0, self.show_update_button)
+        except Exception:
+            pass          # 오프라인 등 - 조용히 무시
+        finally:
+            self._update_checking = False
+
+    def open_update_page(self):
+        if not self._update_info:
+            return
+        tag, url = self._update_info
+        if messagebox.askyesno("업데이트",
+                               f"새 버전 {tag} 이(가) 나왔어요. (현재 v{VERSION})\n다운로드 페이지를 열까요?"):
+            webbrowser.open(url)
 
     def update_app_list(self):
         self.app_listbox.delete(0, tk.END)
@@ -522,8 +691,7 @@ class WorkTimer:
                 with open(self.config_file, 'r') as f:
                     config = json.load(f)
                     self.tracked_apps = config.get('tracked_apps', [])
-                    if config.get('date') == datetime.now().strftime('%Y-%m-%d'):
-                        self.elapsed_seconds = config.get('elapsed_seconds', 0)
+                    self.elapsed_seconds = config.get('elapsed_seconds', 0)   # 0 초기화는 초기화 버튼으로만
                     loaded_index = config.get('color_index', 0)
                     self.current_color_index = loaded_index if loaded_index < len(self.color_themes) else 0
             except Exception:
