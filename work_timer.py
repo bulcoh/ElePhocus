@@ -35,7 +35,7 @@ COLON_LIFT = 4
 
 # 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
 COMPACT_HEIGHT = 182
-SETTINGS_PANEL_HEIGHT = 340
+SETTINGS_PANEL_HEIGHT = 343 if IS_MAC else 335
 
 # 윈도우에서만 시계를 제외한 모든 글자를 이만큼(pt) 키움
 FONT_BUMP = 1 if IS_WIN else 0
@@ -208,8 +208,8 @@ class WorkTimer:
             except Exception:
                 pass
             return "Segoe UI"      # Pretendard 로딩 실패 시에만 (한글은 윈도우가 맑은 고딕으로 대신 채움)
-        # 맥: 1.0 때 customtkinter 기본값이던 시스템 폰트(SF) 사용. 한글은 자동으로 Apple SD Gothic Neo
-        self.timer_family = "SF Pro Display"
+        # 맥: 일반 글자는 시스템 폰트(SF, 한글은 Apple SD Gothic Neo), 시계 숫자만 Helvetica
+        self.timer_family = "Helvetica"
         return "SF Pro Display"
 
     # ---------- 메뉴바 (mac) ----------
@@ -274,7 +274,7 @@ class WorkTimer:
         timer_font = ctk.CTkFont(family=self.timer_family, size=TS, weight="bold")
         probe = tkfont.Font(root=self.root, family=self.timer_family, size=-TS, weight="bold")
         digit_w = max(probe.measure(d) for d in "0123456789")
-        self.seg_w = digit_w * 2 + 4
+        self.seg_w = digit_w * 2 + 2
         self.timer_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
         self.timer_frame.pack()
         self.timer_parts = []
