@@ -1,6 +1,6 @@
 """
 ElePhocus - Work Time Tracker  v1.3
-Copyright (c) 2025 붉은코끼리 (Red Elephant)
+Copyright (c) 2026 붉은코끼리 (Red Elephant)
 Licensed under MIT License with commercial restriction
 
 상업적 이용 또는 앱스토어 배포 시 사전 허가 필요
@@ -35,7 +35,7 @@ COLON_LIFT = 4
 
 # 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
 COMPACT_HEIGHT = 182
-SETTINGS_PANEL_HEIGHT = 343 if IS_MAC else 335
+SETTINGS_PANEL_HEIGHT = 343 if IS_MAC else 325
 
 # 윈도우에서만 시계를 제외한 모든 글자를 이만큼(pt) 키움
 FONT_BUMP = 1 if IS_WIN else 0
