@@ -3,11 +3,15 @@
 cd "$(dirname "$0")"
 set -e
 
+# 버전은 work_timer.py 의 VERSION = "x.y" 에서 자동으로 읽어옴
+VERSION=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' work_timer.py | head -1)
+echo "ElePhocus version: $VERSION"
+
 echo "== [1/4] Setting up build environment =="
 python3 -m venv .venv_build
 source .venv_build/bin/activate
 pip install --quiet --upgrade pip
-pip install --quiet customtkinter pyinstaller pyobjc-framework-Cocoa pyobjc-framework-Quartz
+pip install --quiet customtkinter pyinstaller pyobjc-framework-Cocoa pyobjc-framework-Quartz certifi
 
 echo "== [2/4] Building (this takes a minute) =="
 ICON=""
@@ -20,8 +24,10 @@ pyinstaller --noconfirm --clean --windowed --name ElePhocus $ICON \
 
 echo "== [3/4] Writing app info =="
 PLIST="dist/ElePhocus.app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.1" "$PLIST" 2>/dev/null || \
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.1" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$PLIST" 2>/dev/null || \
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION" "$PLIST" 2>/dev/null || \
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string © 2025 붉은코끼리. All rights reserved." "$PLIST" 2>/dev/null || true
 [ -f License.txt ] && cp License.txt dist/ElePhocus.app/Contents/Resources/
 codesign --force --deep --sign - dist/ElePhocus.app 2>/dev/null || true
