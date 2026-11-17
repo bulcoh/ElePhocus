@@ -34,7 +34,7 @@ UPDATE_CHECK_INTERVAL = 12 * 3600   # 켜둔 채로 있어도 12시간마다 다
 COLON_LIFT = 4
 
 # 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
-COMPACT_HEIGHT = 180 if IS_WIN else 182
+COMPACT_HEIGHT = 182
 SETTINGS_PANEL_HEIGHT = 340
 
 # 윈도우에서만 시계를 제외한 모든 글자를 이만큼(pt) 키움
@@ -425,10 +425,11 @@ class WorkTimer:
 
         text_color = self.get_text_color(theme['primary'])
 
-        self.color_btn.configure(text=f"🎨 {theme['name']}",
-                                 fg_color=theme['primary'],
+        self._theme_name = theme['name']
+        self.color_btn.configure(fg_color=theme['primary'],
                                  hover_color=theme['primary'],
                                  text_color=text_color)
+        self.update_color_btn_shape()
         self.settings_btn.configure(text_color=theme['primary'])
         self.update_btn.configure(text_color=theme['primary'])
 
@@ -445,6 +446,14 @@ class WorkTimer:
         if self.is_running:
             self.status_label.configure(text_color=self.get_complementary_color(theme['primary']))
 
+    def update_color_btn_shape(self):
+        """축소: 글씨 없는 가는 둥근 막대 / 펼침: 원래 색상 버튼"""
+        if self.is_settings_expanded:
+            self.color_btn.configure(height=35, corner_radius=6,
+                                     text=f"🎨 {getattr(self, '_theme_name', 'Color')}")
+        else:
+            self.color_btn.configure(height=6, corner_radius=3, text="")
+
     def toggle_settings(self):
         if self.is_settings_expanded:
             self.settings_container.pack_forget()
@@ -454,6 +463,7 @@ class WorkTimer:
             self.settings_container.pack(fill='both', expand=True, padx=0, pady=0)
             self.root.geometry(f"300x{self.expanded_height}")
             self.is_settings_expanded = True
+        self.update_color_btn_shape()
 
     def format_time(self, seconds):
         hours = seconds // 3600
