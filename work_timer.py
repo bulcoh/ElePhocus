@@ -34,8 +34,11 @@ UPDATE_CHECK_INTERVAL = 12 * 3600   # 켜둔 채로 있어도 12시간마다 다
 COLON_LIFT = 4
 
 # 창 높이(축소 상태). 잘리면 윈도우 숫자만 키우세요. 펼친 높이는 자동으로 같이 늘어납니다.
-COMPACT_HEIGHT = 205 if IS_WIN else 178
+COMPACT_HEIGHT = 180 if IS_WIN else 182
 SETTINGS_PANEL_HEIGHT = 340
+
+# 윈도우에서만 시계를 제외한 모든 글자를 이만큼(pt) 키움
+FONT_BUMP = 1 if IS_WIN else 0
 
 if IS_MAC:
     from AppKit import NSWorkspace, NSApplication
@@ -248,12 +251,12 @@ class WorkTimer:
         self._shown_date = datetime.now().date()
         self.header_label = ctk.CTkLabel(header_frame,
                                          text=f"  {format_date(self._shown_date, self.lang)}",
-                                         font=(F, 11, "bold"))
+                                         font=(F, 11 + FONT_BUMP, "bold"))
         self.header_label.pack(side="left")
 
         self.settings_btn = ctk.CTkButton(header_frame, text="⚙", width=40,
                                           command=self.toggle_settings,
-                                          font=("Segoe UI Symbol", 15) if IS_WIN else (F, 18),
+                                          font=("Segoe UI Symbol", 15) if IS_WIN else (F, 18 + FONT_BUMP),
                                           height=28,
                                           fg_color="transparent",
                                           hover_color=("gray70", "gray30"))
@@ -261,7 +264,7 @@ class WorkTimer:
 
         # 새 버전 알림 버튼 (새 버전이 있을 때만 show_update_button()에서 표시)
         self.update_btn = ctk.CTkButton(header_frame, text="", width=60, height=24,
-                                        font=(F, 11, "bold"),
+                                        font=(F, 11 + FONT_BUMP, "bold"),
                                         fg_color="transparent",
                                         hover_color=("gray70", "gray30"),
                                         command=self.open_update_page)
@@ -286,16 +289,16 @@ class WorkTimer:
         self.timer_segments = [self.timer_parts[0], self.timer_parts[2], self.timer_parts[4]]
 
         self.status_label = ctk.CTkLabel(self.top_frame, text="⏸ 대기 중",
-                                         font=(F, 11))
+                                         font=(F, 11 + FONT_BUMP))
         self.status_label.pack()
 
         self.current_app_label = ctk.CTkLabel(self.top_frame, text="",
-                                              font=(F, 10), height=10)
+                                              font=(F, 10 + FONT_BUMP), height=10)
         self.current_app_label.pack()
 
         self.color_btn = ctk.CTkButton(self.top_frame, text="🎨 Color",
                                        command=self.change_color,
-                                       font=(F, 12),
+                                       font=(F, 12 + FONT_BUMP),
                                        height=35)
         self.color_btn.pack(pady=(5, 10))
 
@@ -305,13 +308,13 @@ class WorkTimer:
         settings_inner.pack(fill='both', expand=True, padx=15, pady=(0, 10))
 
         ctk.CTkLabel(settings_inner, text="추적 대상 앱",
-                     font=(F, 11, "bold")).pack(anchor='w', pady=(0, 5))
+                     font=(F, 11 + FONT_BUMP, "bold")).pack(anchor='w', pady=(0, 5))
 
         list_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
         list_frame.pack(fill='x', pady=(0, 5))
 
         self.app_listbox = tk.Listbox(list_frame, height=4,
-                                      font=(F, 11),
+                                      font=(F, 11 + FONT_BUMP),
                                       bg="#2b2b2b", fg="#ffffff",
                                       selectbackground="#4a9eff",
                                       selectforeground="#ffffff",
@@ -322,16 +325,16 @@ class WorkTimer:
         btn_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
         btn_frame.pack(fill='x', pady=(0, 15))
 
-        self.remove_btn = ctk.CTkButton(btn_frame, text="선택 삭제", font=(F, 12),
+        self.remove_btn = ctk.CTkButton(btn_frame, text="선택 삭제", font=(F, 12 + FONT_BUMP),
                                         command=self.remove_selected_app)
         self.remove_btn.pack(side="left", fill='x', expand=True, padx=(0, 5))
 
-        self.clear_btn = ctk.CTkButton(btn_frame, text="전체 비우기", font=(F, 12),
+        self.clear_btn = ctk.CTkButton(btn_frame, text="전체 비우기", font=(F, 12 + FONT_BUMP),
                                        command=self.clear_all_apps)
         self.clear_btn.pack(side="left", fill='x', expand=True)
 
         ctk.CTkLabel(settings_inner, text="앱 추가",
-                     font=(F, 11, "bold")).pack(anchor='w', pady=(0, 5))
+                     font=(F, 11 + FONT_BUMP, "bold")).pack(anchor='w', pady=(0, 5))
 
         combo_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
         combo_frame.pack(fill='x', pady=(0, 5))
@@ -339,19 +342,19 @@ class WorkTimer:
         self.running_apps_var = ctk.StringVar()
         self.running_apps_combo = ctk.CTkComboBox(combo_frame,
                                                   variable=self.running_apps_var,
-                                                  font=(F, 12),
-                                                  dropdown_font=(F, 12),
+                                                  font=(F, 12 + FONT_BUMP),
+                                                  dropdown_font=(F, 12 + FONT_BUMP),
                                                   state='readonly',
                                                   border_width=1)
         self.running_apps_combo.pack(side="left", fill='x', expand=True, padx=(0, 5))
 
         self.refresh_btn = ctk.CTkButton(combo_frame, text="↻", width=50,
                                          command=self.refresh_running_apps,
-                                         font=(F, 16))
+                                         font=(F, 16 + FONT_BUMP))
         self.refresh_btn.pack(side="left", padx=(0, 5))
 
         self.add_combo_btn = ctk.CTkButton(combo_frame, text="추가", width=80,
-                                           font=(F, 12),
+                                           font=(F, 12 + FONT_BUMP),
                                            command=self.add_from_running_apps)
         self.add_combo_btn.pack(side="left")
 
@@ -360,17 +363,17 @@ class WorkTimer:
 
         self.app_entry = ctk.CTkEntry(entry_frame,
                                       placeholder_text="대소문자 정확히 입력",
-                                      font=(F, 11),
+                                      font=(F, 11 + FONT_BUMP),
                                       border_width=1)
         self.app_entry.pack(side="left", fill='x', expand=True, padx=(0, 5))
 
         self.add_manual_btn = ctk.CTkButton(entry_frame, text="직접 추가", width=80,
-                                            font=(F, 12),
+                                            font=(F, 12 + FONT_BUMP),
                                             command=self.add_manual_app)
         self.add_manual_btn.pack(side="left")
 
         self.reset_btn = ctk.CTkButton(settings_inner, text="⚠️ 타이머 0으로 초기화",
-                                       font=(F, 12),
+                                       font=(F, 12 + FONT_BUMP),
                                        command=self.reset_timer)
         self.reset_btn.pack(fill='x', pady=(5, 0))
 
